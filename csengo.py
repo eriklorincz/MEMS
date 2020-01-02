@@ -25,6 +25,7 @@ import linecache
 camera = PiCamera()
 reader = SimpleMFRC522()
 prevcount=0       #start or stop call
+speakcount=0
 password = "1234"
 pwd=""
 
@@ -52,21 +53,45 @@ numbers = ("[0]", "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]")
 #Quit program
 def Close():
     camera.stop_preview()
+    os.system("pkill -9 -f stream2.py")
+    os.system("pkill -9 -f stream3.py")
     gui.after_cancel(poll)
     gui.destroy()
 
 #Start / Stop camera
 def checkPrev():
     global prevcount
+    global speakcount
     
     if (prevcount == 0):
         camera.start_preview(fullscreen=False, window=(500,50,1280,960))
         prevcount=1
         
+        #start program for voice communication
+        os.system("python3 /home/pi/mems/MEMS/stream2.py &")
+        
+        
     else:
         camera.stop_preview()
         prevcount=0
+        speakcount=0
+        os.system("pkill -9 -f stream2.py")
+        os.system("pkill -9 -f stream3.py")
 
+#change the direction of active voice communication
+def Speak():
+
+    global speakcount
+    global prevcount
+    if (prevcount == 1):
+        if (speakcount == 0):
+            os.system("pkill -9 -f stream2.py")
+            os.system("python3 /home/pi/mems/MEMS/stream3.py &")
+            speakcount=1
+        else:
+            os.system("pkill -9 -f stream3.py")
+            os.system("python3 /home/pi/mems/MEMS/stream2.py &")
+            speakcount=0
 
 #alternate between home and away
 def Gone():
@@ -311,6 +336,9 @@ SettingsButton.place(x = 10, y = 560)
 
 QuitButton = Button(gui, text = "Quit", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = Close)
 QuitButton.place(x = 10, y = 740)
+
+SpeakButton = Button(gui, text = "Speak", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = Speak)
+SpeakButton.place(x= 900, y = 850)
 
 #Body of the program
 gui.after(10, poll)
