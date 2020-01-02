@@ -13,17 +13,29 @@ import digitalio
 import board
 import adafruit_matrixkeypad
 
+import os
+
 #for GUI
+import tkinter as tk
 from tkinter import *
+from PIL import Image, ImageTk
+import linecache
 
 #init global variables
 camera = PiCamera()
 reader = SimpleMFRC522()
-prevcount=0
+prevcount=0       #start or stop call
 password = "1234"
 pwd=""
 
-expression = ""
+IsHome = 0        
+CallAct = 0       #determine if call is active
+
+expression = ""    #used for password changing
+
+pwfile = "/home/pi/passwords"
+rffile = "/home/pi/IDs"
+picfile = "/home/pi/picfile"
 
 #for matrix keypad
 cols = [digitalio.DigitalInOut(x) for x in (board.D6, board.D13, board.D19, board.D26)]
@@ -48,13 +60,25 @@ def checkPrev():
     global prevcount
     
     if (prevcount == 0):
-        camera.start_preview(fullscreen=False,window=(500,50,1280,960))
+        camera.start_preview(fullscreen=False, window=(500,50,1280,960))
         prevcount=1
         
     else:
         camera.stop_preview()
         prevcount=0
 
+
+#alternate between home and away
+def Gone():
+    
+    global IsHome
+    
+    if (IsHome == 0):
+        AwayButton.config(text = "Home" , bg = "red")
+        IsHome = 1
+    else:
+        AwayButton.config(text = "Away", bg = "grey")
+        IsHome = 0
 
 #Open Door
 def OpenDoor():
@@ -66,7 +90,7 @@ def poll():
     global pwd
     keys = keypad.pressed_keys
     if (str(keys) == "['C']"):
-        kep()
+        SaveToPicF(0)
         time.sleep(0.3)
         
     elif (str(keys) == "['B']"):
@@ -74,7 +98,7 @@ def poll():
         time.sleep(0.3)
         
     elif (str(keys) == "['A']"):
-        idread()
+        checkid()
         time.sleep(0.3)
         
     elif (str(keys) == "['*']"):
@@ -89,8 +113,6 @@ def poll():
             OpenDoor()
         time.sleep(0.3)
             
-    else:
-        print("Invalid command")
         
     gui.after(10, poll)
     
@@ -115,7 +137,12 @@ def OK(equation):
     
     global expression
     global password
+    global pwfile
     password = expression
+    
+    f = open(pwfile, "w")
+    f.write(password)
+    f.close()
     
     clear(equation)
 
@@ -137,8 +164,14 @@ def Options():
     expression_field.place(x = 700, y = 100)    
 
 
-    QuitS = Button(settings, text = "Quit", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = settings.destroy)
-    QuitS.place(x=10, y=10)
+    BackS = Button(settings, text = "Back", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = settings.destroy)
+    BackS.place(x=10, y=10)
+    
+    ButtonNID = Button(settings, text = "New ID", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = writeid)
+    ButtonNID.place(x = 10, y = 200)
+    
+    ButtonData = Button(settings, text = "Data", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = ShowData)
+    ButtonData.place(x = 10, y = 390)
     
     button1 = Button(settings, text=' 1 ', fg='black', bg='red', font=('comicsans', 50), command=lambda: press(1, equation), height=1, width=3) 
     button1.place(x=700, y=200) 
@@ -180,19 +213,79 @@ def Options():
     settings.mainloop()
 
 
+#open an external program, which can show the taken pictures
+def ShowData():
+
+    os.system("python3 /home/pi/mems/MEMS/database.py")
+
+#write a line to Pictures list file
+def SaveToPicF(origin):
+    y = TakePic()
+    f = open(picfile, "a")
+    f.write("%s\n" % (y))
+    #f.write("%s %d\n" % (y, origin))
+    f.close()
+    
+
+
 #function that takes picture with current date and time as name
-def kep():
+def TakePic():
     print("Taking pic")
-    x = "/home/pi/mems/" + (time.strftime("%b-%d-%Y-%H-%M-%S")) + ".jpg"
+    y = (time.strftime("%b-%d-%Y-%H-%M-%S"))
+    x = "/home/pi/mems/" + y + ".jpg"
     camera.capture(x)
+    return y
 
 
-#function reading card id and text
+#function reading card id
 def idread():
-    print("Reading card")
     id, text = reader.read()
-    print(id)
-    print(text)
+    strid = str(id)
+    return strid
+
+#save a new id to the database
+def writeid():
+    ID = idread()
+    f = open(rffile, "a")
+    f.write("%s\n" % (ID))
+    f.close()
+    
+#check if the read id is allowed to open the door
+def checkid():
+    ID = idread()
+    
+    try:
+        f = open(rffile, "r")
+        for x in f:
+            x=x[:-1]
+            if (x == ID):
+                
+                OpenDoor()
+            
+        f.close()
+        
+    except:
+        print("none")
+
+#get password from the file    
+def pwFileHandle():
+    
+    global pwfile
+    global password
+    
+    try:
+        f = open(pwfile, "r")
+        password = f.readline()
+        f.close()
+    #or create file with default password
+    except:
+        f = open(pwfile, "a")
+        f.write(password)
+        f.close()
+        
+        
+        
+pwFileHandle()
 
 
 gui = Tk()
@@ -204,7 +297,7 @@ gui.title("Csengo")
 gui.geometry("530x250")
 gui.attributes('-zoomed', True)
 
-AwayButton = Button(gui, text = "Away", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6)
+AwayButton = Button(gui, text = "Away", fg = "black", bg = "grey", command = Gone, font=('comicsans', 80), height = 1, width = 6)
 AwayButton.place(x = 10, y = 20)
 
 DoorButton = Button(gui, text = "Open", fg = "black", bg = "grey", command = OpenDoor, font=('comicsans', 80), height = 1, width = 6)
@@ -226,3 +319,4 @@ gui.mainloop()
 print("End of program")
     
 GPIO.cleanup()
+
