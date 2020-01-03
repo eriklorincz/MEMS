@@ -21,6 +21,16 @@ from tkinter import *
 from PIL import Image, ImageTk
 import linecache
 
+from playsound import playsound
+
+#for sending emails
+import email, smtplib, ssl
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+
 #init global variables
 camera = PiCamera()
 reader = SimpleMFRC522()
@@ -53,8 +63,6 @@ numbers = ("[0]", "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]")
 #Quit program
 def Close():
     camera.stop_preview()
-    os.system("pkill -9 -f stream2.py")
-    os.system("pkill -9 -f stream3.py")
     gui.after_cancel(poll)
     gui.destroy()
 
@@ -107,8 +115,65 @@ def Gone():
 
 #Open Door
 def OpenDoor():
+    SaveToPicF()
     print("Door is open")
 
+#Play sound and take picture
+def DoorBell():
+    global IsHome
+    
+    y = SaveToPicF()
+    os.system("aplay /home/pi/pythonok/match3.wav")
+    
+    if (IsHome == 1):
+        SendEmail(y)
+
+#Send email with the taken picture as attachment
+def SendEmail(fname):
+    subject = "Someone Ringed"
+    body = "Someone Ringed"
+    sender_email = "frommail@gmail.com"  #set sender address
+    receiver_email = "tomail@gmail.com"  #set reciever address
+    password = "Password!"               #set sender password
+
+    # Create a multipart message and set headers
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = receiver_email
+    message["Subject"] = subject
+    message["Bcc"] = receiver_email  # Recommended for mass emails
+
+    # Add body to email
+    message.attach(MIMEText(body, "plain"))
+
+    filename = "/home/pi/mems/" + fname + ".jpg"  
+
+
+    with open(filename, "rb") as attachment:
+        # Add file as application/octet-stream
+        # Email client can usually download this automatically as attachment
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(attachment.read())
+
+    # Encode file in ASCII characters to send by email    
+    encoders.encode_base64(part)
+
+    # Add header as key/value pair to attachment part
+    part.add_header(
+        "Content-Disposition",
+        f"attachment; filename= {fname}",
+    )
+
+    # Add attachment to message and convert message to string
+    message.attach(part)
+    text = message.as_string()
+
+    # Log in to server using secure context and send email
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+        server.login(sender_email, password)
+        server.sendmail(sender_email, receiver_email, text)
+    
 #loop to control peripherials
 def poll():
     
@@ -119,7 +184,7 @@ def poll():
         time.sleep(0.3)
         
     elif (str(keys) == "['B']"):
-        preview()
+        DoorBell()
         time.sleep(0.3)
         
     elif (str(keys) == "['A']"):
@@ -244,13 +309,13 @@ def ShowData():
     os.system("python3 /home/pi/mems/MEMS/database.py")
 
 #write a line to Pictures list file
-def SaveToPicF(origin):
+def SaveToPicF():
     y = TakePic()
     f = open(picfile, "a")
     f.write("%s\n" % (y))
     #f.write("%s %d\n" % (y, origin))
     f.close()
-    
+    return y
 
 
 #function that takes picture with current date and time as name
@@ -290,7 +355,7 @@ def checkid():
         f.close()
         
     except:
-        print("none")
+        k=1 #Basically: "Do nothing"
 
 #get password from the file    
 def pwFileHandle():
