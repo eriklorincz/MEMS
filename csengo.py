@@ -1,4 +1,4 @@
-from picamera import PiCamera  #for camera
+from picamera import PiCamera       #for camera
 import RPi.GPIO as GPIO
 from mfrc522 import SimpleMFRC522   #for RFID reader
 
@@ -13,6 +13,7 @@ import digitalio
 import board
 import adafruit_matrixkeypad
 
+#for external commands
 import os
 
 #for GUI
@@ -21,6 +22,7 @@ from tkinter import *
 from PIL import Image, ImageTk
 import linecache
 
+#for doorbell sound
 from playsound import playsound
 
 #for sending emails
@@ -32,21 +34,22 @@ from email.mime.text import MIMEText
 
 
 #init global variables
-camera = PiCamera()
-reader = SimpleMFRC522()
-prevcount=0       #start or stop call
-speakcount=0
-password = "1234"
-pwd=""
+camera = PiCamera()      #name of the camera
+reader = SimpleMFRC522() #name of the RFID reader
+prevcount=0              #start or stop call
+speakcount=0             #decide who is speaking (microphone activation)
+password = "1234"        #default password, if no password file is available
+pwd=""                   #variable for the matrix keypad password input
 
-IsHome = 0        
-CallAct = 0       #determine if call is active
+IsHome = 0               #For the Away - Home button
+CallAct = 0              #determine if call is active
 
-expression = ""    #used for password changing
+expression = ""          #used for password changing in settings menu
 
-pwfile = "/home/pi/passwords"
-rffile = "/home/pi/IDs"
-picfile = "/home/pi/picfile"
+#file locations
+pwfile = "/home/pi/mems/files/passwords"    #for the password(s)
+rffile = "/home/pi/mems/files/IDs"          #for RFID numbers
+picfile = "/home/pi/mems/files/picfile"     #folder of the taken pictures
 
 #for matrix keypad
 cols = [digitalio.DigitalInOut(x) for x in (board.D6, board.D13, board.D19, board.D26)]
@@ -64,6 +67,9 @@ numbers = ("[0]", "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]")
 def Close():
     camera.stop_preview()
     gui.after_cancel(poll)
+    os.system("pkill -9 -f stream2.py")
+    os.system("pkill -9 -f stream3.py")
+    #os.system("amixer -c 0 cset numid=3 1")
     gui.destroy()
 
 #Start / Stop camera
@@ -72,11 +78,11 @@ def checkPrev():
     global speakcount
     
     if (prevcount == 0):
-        camera.start_preview(fullscreen=False, window=(500,50,1280,960))
+        camera.start_preview(fullscreen=False, window=(500,50,480,480))
         prevcount=1
         
         #start program for voice communication
-        os.system("python3 /home/pi/mems/MEMS/stream2.py &")
+        os.system("python3 /home/pi/mems/MEMS/stream3.py &")
         
         
     else:
@@ -85,6 +91,7 @@ def checkPrev():
         speakcount=0
         os.system("pkill -9 -f stream2.py")
         os.system("pkill -9 -f stream3.py")
+        os.system("amixer -c 0 cset numid=3 1")
 
 #change the direction of active voice communication
 def Speak():
@@ -93,13 +100,14 @@ def Speak():
     global prevcount
     if (prevcount == 1):
         if (speakcount == 0):
-            os.system("pkill -9 -f stream2.py")
-            os.system("python3 /home/pi/mems/MEMS/stream3.py &")
-            speakcount=1
-        else:
             os.system("pkill -9 -f stream3.py")
             os.system("python3 /home/pi/mems/MEMS/stream2.py &")
+            speakcount=1
+        else:
+            os.system("pkill -9 -f stream2.py")
+            os.system("python3 /home/pi/mems/MEMS/stream3.py &")
             speakcount=0
+            
 
 #alternate between home and away
 def Gone():
@@ -116,12 +124,13 @@ def Gone():
 #Open Door
 def OpenDoor():
     SaveToPicF()
-    print("Door is open")
+    os.system("python3 /home/pi/mems/MEMS/OpenDoor.py &")
+    
 
 #Play sound and take picture
 def DoorBell():
     global IsHome
-    
+    os.system("amixer -c 0 cset numid=3 1")
     y = SaveToPicF()
     os.system("aplay /home/pi/pythonok/match3.wav")
     
@@ -179,15 +188,12 @@ def poll():
     
     global pwd
     keys = keypad.pressed_keys
-    if (str(keys) == "['C']"):
-        SaveToPicF(0)
-        time.sleep(0.3)
-        
-    elif (str(keys) == "['B']"):
+
+    if (str(keys) == "['A']"):
         DoorBell()
         time.sleep(0.3)
         
-    elif (str(keys) == "['A']"):
+    elif (str(keys) == "['B']"):
         checkid()
         time.sleep(0.3)
         
@@ -254,8 +260,8 @@ def Options():
     expression_field.place(x = 700, y = 100)    
 
 
-    BackS = Button(settings, text = "Back", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = settings.destroy)
-    BackS.place(x=10, y=10)
+    ButtonBack = Button(settings, text = "Back", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = settings.destroy)
+    ButtonBack.place(x=10, y=10)
     
     ButtonNID = Button(settings, text = "New ID", fg = "black", bg = "grey", font=('comicsans', 80), height = 1, width = 6, command = writeid)
     ButtonNID.place(x = 10, y = 200)
@@ -377,6 +383,7 @@ def pwFileHandle():
         
 pwFileHandle()
 
+#os.system("amixer -c 0 cset numid=3 2")
 
 gui = Tk()
 
